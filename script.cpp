@@ -15,8 +15,8 @@
 #include "util.h"
 
 
-Script::Script(Mixer *mix, Resource *res, SfxPlayer *ply, Video *vid, SystemStub *stub)
-	: _mix(mix), _res(res), _ply(ply), _vid(vid), _stub(stub) {
+Script::Script(Mixer *mix, Resource *res, SfxPlayer *ply, Video *vid)
+	: _mix(mix), _res(res), _ply(ply), _vid(vid), _stub(0) {
 }
 
 void Script::init() {
@@ -371,10 +371,10 @@ void Script::restartAt(int part, int pos) {
 	if (_res->getDataType() == Resource::DT_20TH_EDITION && part != 16001) {
 		// difficulty (0 to 2)
 		_scriptVars[0xBF] = 1;
-		// mute sounds and enable resnum >= 2000
+		// mute sounds and enable resnum >= 2000 (Debug Mode ?)
 //		_scriptVars[0xDB] = 1;
 		// playback sounds resnum >= 146
-		_scriptVars[0xDE] = 1;
+		_scriptVars[0xDE] = Graphics::_is1991 ? 0 : 1;
 	}
 	if (_res->getDataType() == Resource::DT_DOS) {
 		_scriptVars[0xE4] = 20;
@@ -594,16 +594,21 @@ void Script::inp_updatePlayer() {
 	}
 	if (_stub->_pi.dirMask & PlayerInput::DIR_DOWN) {
 		ud = 1;
-		m |= 4;
+		m |= 4; // crouch
+	}
+	if (_stub->_pi.dirMask & PlayerInput::DIR_UP) {
+		ud = -1;
+		m |= 8; // jump
 	}
 	_scriptVars[VAR_HERO_POS_UP_DOWN] = ud;
-	if (_stub->_pi.dirMask & PlayerInput::DIR_UP) {
-		_scriptVars[VAR_HERO_POS_UP_DOWN] = -1;
+
+	// The password selection screen in the 3DO version accepts both 'action'
+	// and 'jump' buttons. As 'up' is also mapped to 'jump', pressing it selects
+	// the highlighted letter instead of moving the cursor. We zero the jump code.
+	if (_is3DO && _res->_currentPart == 16009) {
+		ud = 0;
 	}
-	if (_stub->_pi.dirMask & PlayerInput::DIR_UP) { // inpJump
-		ud = -1;
-		m |= 8;
-	}
+
 	_scriptVars[VAR_HERO_POS_JUMP_DOWN] = ud;
 	_scriptVars[VAR_HERO_POS_LEFT_RIGHT] = lr;
 	_scriptVars[VAR_HERO_POS_MASK] = m;
@@ -678,7 +683,7 @@ void Script::snd_playMusic(uint16_t resNum, uint16_t delay, uint8_t pos) {
 	case Resource::DT_15TH_EDITION:
 	case Resource::DT_20TH_EDITION:
 	case Resource::DT_WIN31:
-		if (resNum == 0) {
+		if (resNum == 0 || resNum == 5000) {
 			_mix->stopMusic();
 		} else {
 			char path[MAXPATHLEN];

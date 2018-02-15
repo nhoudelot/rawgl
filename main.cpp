@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 #include "engine.h"
 #include "graphics.h"
+#include "resource.h"
 #include "systemstub.h"
 #include "util.h"
 
@@ -47,6 +48,7 @@ static const struct {
 };
 
 bool Graphics::_is1991 = false;
+bool Graphics::_use565 = false;
 
 static Graphics *createGraphics(int type) {
 	switch (type) {
@@ -63,8 +65,19 @@ static Graphics *createGraphics(int type) {
 	return 0;
 }
 
+static int getGraphicsType(Resource::DataType type) {
+	switch (type) {
+	case Resource::DT_15TH_EDITION:
+	case Resource::DT_20TH_EDITION:
+	case Resource::DT_3DO:
+		return GRAPHICS_GL;
+	default:
+		return GRAPHICS_ORIGINAL;
+	}
+}
+
 static const int DEFAULT_WINDOW_W = 640;
-static const int DEFAULT_WINDOW_H = 480;
+static const int DEFAULT_WINDOW_H = 400;
 
 #undef main
 int main(int argc, char *argv[]) {
@@ -77,6 +90,7 @@ int main(int argc, char *argv[]) {
 	dm.width  = DEFAULT_WINDOW_W;
 	dm.height = DEFAULT_WINDOW_H;
 	dm.opengl = (graphicsType == GRAPHICS_GL);
+	bool defaultGraphics = true;
 	if (argc == 2) {
 		// data path as the only command line argument
 		struct stat st;
@@ -121,6 +135,7 @@ int main(int argc, char *argv[]) {
 				if (strcmp(optarg, GRAPHICS[i].name) == 0) {
 					graphicsType = GRAPHICS[i].type;
 					dm.opengl = (graphicsType == GRAPHICS_GL);
+					defaultGraphics = false;
 					break;
 				}
 			}
@@ -142,10 +157,20 @@ int main(int argc, char *argv[]) {
 		}
 	}
 	g_debugMask = DBG_INFO; // | DBG_VIDEO | DBG_SND | DBG_SCRIPT | DBG_BANK | DBG_SER;
+	Engine *e = new Engine(dataPath, part);
+	if (defaultGraphics) {
+		// if not set, use original software graphics for 199x editions and GL for the anniversary and 3DO versions
+		graphicsType = getGraphicsType(e->_res.getDataType());
+		dm.opengl = (graphicsType == GRAPHICS_GL);
+	}
+	if (graphicsType != GRAPHICS_GL && e->_res.getDataType() == Resource::DT_3DO) {
+		graphicsType = GRAPHICS_SOFTWARE;
+		Graphics::_use565 = true;
+	}
 	Graphics *graphics = createGraphics(graphicsType);
 	SystemStub *stub = SystemStub_SDL_create();
-	Engine *e = new Engine(graphics, stub, dataPath, part);
 	stub->init(e->getGameTitle(lang), &dm);
+	e->setSystemStub(stub, graphics);
 	e->run(lang);
 	delete e;
 	stub->fini();
